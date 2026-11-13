@@ -1,0 +1,192 @@
+# Stage template extended by /azure-pipelines.yml, which defines the pipeline variables.
+stages:
+  - stage: Validate
+    displayName: Build, test, and check
+    jobs:
+      - job: ValidateCode
+        pool:
+          vmImage: ubuntu-latest
+        steps:
+          - checkout: self
+            clean: true
+          - task: UseDotNet@2
+            inputs:
+              packageType: sdk
+              version: 10.0.x
+          - task: DotNetCoreCLI@2
+            displayName: Restore packages
+            inputs:
+              command: restore
+              projects: hosted-agent/FoundryHostedAgentPoc.slnx
+          - task: DotNetCoreCLI@2
+            displayName: Build solution
+            inputs:
+              command: build
+              projects: hosted-agent/FoundryHostedAgentPoc.slnx
+              arguments: --configuration $(BuildConfiguration) --no-restore
+          - task: DotNetCoreCLI@2
+            displayName: Run automated tests
+            inputs:
+              command: test
+              projects: hosted-agent/FoundryHostedAgentPoc.slnx
+              arguments: >-
+                --configuration $(BuildConfiguration)
+                --no-build
+                --no-restore
+                --collect:"XPlat Code Coverage"
+              publishTestResults: true
+          - script: >-
+              dotnet format hosted-agent/FoundryHostedAgentPoc.slnx
+              --verify-no-changes
+              --no-restore
+            displayName: Verify formatting
+          - script: >-
+              dotnet list hosted-agent/FoundryHostedAgentPoc.slnx package
+              --vulnerable
+              --include-transitive
+            displayName: Check vulnerable NuGet packages
+          - task: PublishCodeCoverageResults@2
+            condition: always()
+            inputs:
+              summaryFileLocation: '$(Agent.TempDirectory)/**/coverage.cobertura.xml'
+
+  - stage: Build_Container
+    displayName: Build immutable ACR image
+    dependsOn: Validate
+    condition: >-
+      and(
+        succeeded(),
+        ne(variables['Build.Reason'], 'PullRequest'),
+        in(variables['Build.SourceBranch'], 'refs/heads/main', 'refs/heads/develop')
+      )
+    jobs:
+      - job: BuildImage
+        pool:
+          vmImage: ubuntu-latest
+        steps:
+          - checkout: self
+            clean: true
+          - task: AzureCLI@2
+            name: acrBuild
+            displayName: Build and push image
+            inputs:
+              azureSubscription: $(AZURE_SERVICE_CONNECTION)
+              scriptType: pscore
+              scriptLocation: inlineScript
+              inlineScript: |
+                $ErrorActionPreference = 'Stop'
+                $rawTag = "$(Build.BuildId)-$(Build.SourceVersion)"
+                $tag = $rawTag.Substring(0, [Math]::Min(48, $rawTag.Length))
+                $image = "$(ACR_LOGIN_SERVER)/$(ImageRepository):$tag"
+                az acr build `
+                  --registry "$(ACR_NAME)" `
+                  --image "$(ImageRepository):$tag" `
+                  --file "hosted-agent/src/FoundryHostedAgent/Dockerfile" `
+                  --platform linux/amd64 `
+                  "hosted-agent/src/FoundryHostedAgent"
+                if ($LASTEXITCODE -ne 0) { throw 'ACR build failed.' }
+                Write-Host "##vso[task.setvariable variable=ImageUri;isOutput=true]$image"
+
+  - stage: Deploy_Development
+    displayName: Deploy development agent
+    dependsOn: Build_Container
+    condition: succeeded()
+    variables:
+      ImageUri: $[ stageDependencies.Build_Container.BuildImage.outputs['acrBuild.ImageUri'] ]
+    jobs:
+      - deployment: DeployDevAgent
+        environment: foundry-hosted-agent-dev
+        pool:
+          vmImage: windows-latest
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - checkout: self
+                - task: AzureCLI@2
+                  inputs:
+                    azureSubscription: $(AZURE_SERVICE_CONNECTION)
+                    scriptType: pscore
+                    scriptPath: hosted-agent/pipelines/scripts/Deploy-HostedAgent.ps1
+                    arguments: >-
+                      -ProjectEndpoint "$(FOUNDRY_PROJECT_ENDPOINT)"
+                      -AgentName "$(DevAgentName)"
+                      -ImageUri "$(ImageUri)"
+                      -ModelDeployment "$(FOUNDRY_MODEL_DEPLOYMENT)"
+                      -Release "$(Build.BuildNumber)"
+
+  - stage: Smoke_Test_Development
+    displayName: Smoke test development agent
+    dependsOn: Deploy_Development
+    condition: succeeded()
+    jobs:
+      - job: SmokeTest
+        pool:
+          vmImage: windows-latest
+        steps:
+          - checkout: self
+          - task: AzureCLI@2
+            inputs:
+              azureSubscription: $(AZURE_SERVICE_CONNECTION)
+              scriptType: pscore
+              scriptPath: hosted-agent/pipelines/scripts/SmokeTest-HostedAgent.ps1
+              arguments: >-
+                -ProjectEndpoint "$(FOUNDRY_PROJECT_ENDPOINT)"
+                -AgentName "$(DevAgentName)"
+
+  - stage: Approve_Production
+    displayName: Production approval gate
+    dependsOn: Smoke_Test_Development
+    condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+    jobs:
+      - job: ManualApproval
+        pool: server
+        timeoutInMinutes: 1440
+        steps:
+          - task: ManualValidation@1
+            timeoutInMinutes: 720
+            inputs:
+              notifyUsers: $(APPROVAL_NOTIFY_USERS)
+              approvers: $(PRODUCTION_APPROVERS)
+              allowApproversToApproveTheirOwnRuns: false
+              instructions: Review build, test, image, smoke-test, and change evidence.
+              onTimeout: reject
+
+  - stage: Deploy_Production
+    displayName: Deploy production agent
+    dependsOn:
+      - Build_Container
+      - Approve_Production
+    condition: succeeded()
+    variables:
+      ImageUri: $[ stageDependencies.Build_Container.BuildImage.outputs['acrBuild.ImageUri'] ]
+    jobs:
+      - deployment: DeployProdAgent
+        environment: foundry-hosted-agent-prod
+        pool:
+          vmImage: windows-latest
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - checkout: self
+                - task: AzureCLI@2
+                  inputs:
+                    azureSubscription: $(AZURE_SERVICE_CONNECTION)
+                    scriptType: pscore
+                    scriptPath: hosted-agent/pipelines/scripts/Deploy-HostedAgent.ps1
+                    arguments: >-
+                      -ProjectEndpoint "$(FOUNDRY_PROJECT_ENDPOINT)"
+                      -AgentName "$(ProdAgentName)"
+                      -ImageUri "$(ImageUri)"
+                      -ModelDeployment "$(FOUNDRY_MODEL_DEPLOYMENT)"
+                      -Release "$(Build.BuildNumber)"
+                - task: AzureCLI@2
+                  displayName: Production smoke test
+                  inputs:
+                    azureSubscription: $(AZURE_SERVICE_CONNECTION)
+                    scriptType: pscore
+                    scriptPath: hosted-agent/pipelines/scripts/SmokeTest-HostedAgent.ps1
+                    arguments: >-
+                      -ProjectEndpoint "$(FOUNDRY_PROJECT_ENDPOINT)"
+                      -AgentName "$(ProdAgentName)"

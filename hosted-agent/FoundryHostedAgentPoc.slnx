@@ -1,0 +1,9 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/ConsoleAppClient/ConsoleAppClient.csproj" />
+    <Project Path="src/FoundryHostedAgent/FoundryHostedAgent.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/FoundryHostedAgent.Tests/FoundryHostedAgent.Tests.csproj" />
+  </Folder>
+</Solution>

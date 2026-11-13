@@ -1,0 +1,10 @@
+{
+  "$schema": "http://json.schemastore.org/launchsettings.json",
+  "profiles": {
+    "ConsoleAppClient": {
+      "commandName": "Project",
+      "commandLineArgs": "\"Show user 1 details and incomplete tasks. Name every tool used.\"",
+      "environmentVariables": {}
+    }
+  }
+}

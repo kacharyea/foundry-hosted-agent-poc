@@ -1,0 +1,15 @@
+**/bin/
+**/obj/
+.vs/
+.vscode/
+.env
+.azure/
+deployment.local.json
+*.local.bicepparam
+TestResults/
+*.user
+*.suo
+*.pfx
+*.pem
+*.key
+*-share.zip

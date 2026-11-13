@@ -1,0 +1,141 @@
+trigger:
+  branches:
+    include:
+      - main
+      - develop
+  paths:
+    include:
+      - infrastructure/*
+      - infrastructure/**
+
+pr:
+  branches:
+    include:
+      - main
+      - develop
+  paths:
+    include:
+      - infrastructure/*
+      - infrastructure/**
+
+name: hosted-agent-infra-$(Date:yyyyMMdd).$(Rev:r)
+
+variables:
+  # Create this variable group in Azure DevOps. Do not commit credentials.
+  - group: foundry-hosted-agent-infra
+  - name: TemplateFile
+    value: infrastructure/main.bicep
+
+stages:
+  - stage: Validate
+    displayName: Validate Bicep
+    jobs:
+      - job: ValidateBicep
+        pool:
+          vmImage: ubuntu-latest
+        steps:
+          - checkout: self
+            clean: true
+
+          - task: AzureCLI@2
+            displayName: Build and validate deployment
+            inputs:
+              azureSubscription: $(AZURE_SERVICE_CONNECTION)
+              scriptType: pscore
+              scriptLocation: inlineScript
+              inlineScript: |
+                $ErrorActionPreference = 'Stop'
+                az bicep build --file "$(TemplateFile)"
+                if ($LASTEXITCODE -ne 0) { throw 'Bicep build failed.' }
+
+                az deployment group validate `
+                  --name "hosted-agent-infra-validate-$(Build.BuildId)" `
+                  --resource-group "$(AZURE_RESOURCE_GROUP)" `
+                  --template-file "$(TemplateFile)" `
+                  --parameters "$(INFRA_PARAMETER_FILE)"
+                if ($LASTEXITCODE -ne 0) { throw 'ARM deployment validation failed.' }
+
+  - stage: WhatIf
+    displayName: Review infrastructure changes
+    dependsOn: Validate
+    condition: and(succeeded(), ne(variables['Build.Reason'], 'PullRequest'))
+    jobs:
+      - job: WhatIf
+        pool:
+          vmImage: ubuntu-latest
+        steps:
+          - checkout: self
+            clean: true
+
+          - task: AzureCLI@2
+            displayName: Run resource-group what-if
+            inputs:
+              azureSubscription: $(AZURE_SERVICE_CONNECTION)
+              scriptType: pscore
+              scriptLocation: inlineScript
+              inlineScript: |
+                $ErrorActionPreference = 'Stop'
+                az deployment group what-if `
+                  --name "hosted-agent-infra-whatif-$(Build.BuildId)" `
+                  --resource-group "$(AZURE_RESOURCE_GROUP)" `
+                  --template-file "$(TemplateFile)" `
+                  --parameters "$(INFRA_PARAMETER_FILE)" `
+                  --result-format FullResourcePayloads
+                if ($LASTEXITCODE -ne 0) { throw 'Infrastructure what-if failed.' }
+
+  - stage: Approve
+    displayName: Approve infrastructure deployment
+    dependsOn: WhatIf
+    condition: >-
+      and(
+        succeeded(),
+        eq(variables['Build.SourceBranch'], 'refs/heads/main')
+      )
+    jobs:
+      - job: ManualApproval
+        pool: server
+        timeoutInMinutes: 1440
+        steps:
+          - task: ManualValidation@1
+            timeoutInMinutes: 720
+            inputs:
+              notifyUsers: $(APPROVAL_NOTIFY_USERS)
+              approvers: $(INFRASTRUCTURE_APPROVERS)
+              allowApproversToApproveTheirOwnRuns: false
+              instructions: |
+                Review the Bicep validation and what-if output. Confirm that shared Foundry
+                resources are referenced, not recreated, and that RBAC changes are least privilege.
+              onTimeout: reject
+
+  - stage: Deploy
+    displayName: Deploy support infrastructure and permissions
+    dependsOn: Approve
+    condition: succeeded()
+    jobs:
+      - deployment: DeployInfrastructure
+        environment: foundry-hosted-agent-infra
+        pool:
+          vmImage: ubuntu-latest
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - checkout: self
+                  clean: true
+
+                - task: AzureCLI@2
+                  displayName: Deploy Bicep
+                  inputs:
+                    azureSubscription: $(AZURE_SERVICE_CONNECTION)
+                    scriptType: pscore
+                    scriptLocation: inlineScript
+                    inlineScript: |
+                      $ErrorActionPreference = 'Stop'
+                      az deployment group create `
+                        --name "hosted-agent-infra-$(Build.BuildId)" `
+                        --resource-group "$(AZURE_RESOURCE_GROUP)" `
+                        --template-file "$(TemplateFile)" `
+                        --parameters "$(INFRA_PARAMETER_FILE)" `
+                        --query properties.provisioningState `
+                        --output tsv
+                      if ($LASTEXITCODE -ne 0) { throw 'Infrastructure deployment failed.' }

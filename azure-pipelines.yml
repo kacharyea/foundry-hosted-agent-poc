@@ -1,0 +1,45 @@
+trigger:
+  branches:
+    include:
+      - main
+      - develop
+      - feature/*
+  paths:
+    include:
+      - azure-pipelines.yml
+      - hosted-agent/*
+      - hosted-agent/**
+    exclude:
+      - '**/*.md'
+
+pr:
+  branches:
+    include:
+      - main
+      - develop
+  paths:
+    include:
+      - azure-pipelines.yml
+      - hosted-agent/*
+      - hosted-agent/**
+    exclude:
+      - '**/*.md'
+
+name: hosted-agent-$(Date:yyyyMMdd).$(Rev:r)
+
+variables:
+  # Create this variable group in Azure DevOps. Do not commit credentials.
+  - group: foundry-hosted-agent-poc
+  - name: BuildConfiguration
+    value: Release
+  - name: ImageRepository
+    value: foundry-hosted-integration-poc
+  - name: DevAgentName
+    value: foundry-hosted-integration-poc-dev
+  - name: ProdAgentName
+    value: foundry-hosted-integration-poc
+
+# Compatibility entry point: existing Azure DevOps pipeline definitions can continue
+# referencing /azure-pipelines.yml while implementation stays isolated below.
+extends:
+  template: hosted-agent/pipelines/pipeline.yml
