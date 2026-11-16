@@ -8,6 +8,7 @@ Runs the same stages as the Azure DevOps pipelines:
   2. ACR remote build of the agent container image.
   3. Hosted Agent version creation and endpoint routing.
   4. Managed-endpoint smoke test.
+Optionally (-MonitoringParameterFile) deploys the operations workbook, alerts, and action group.
 
 Requires an existing Microsoft Foundry account/project and model deployment. Authentication uses the
 current Azure CLI login; no credentials are stored or accepted by this script.
@@ -26,6 +27,7 @@ param(
     [Parameter(Mandatory)] [ValidateNotNullOrEmpty()] [string] $ResourceGroup,
     [Parameter(Mandatory)] [ValidateNotNullOrEmpty()] [string] $ModelDeployment,
     [string] $SubscriptionId,
+    [string] $MonitoringParameterFile,
     [ValidatePattern('^[a-zA-Z0-9-]{1,63}$')] [string] $AgentName = 'foundry-hosted-integration-poc',
     [ValidatePattern('^[a-z0-9][a-z0-9._/-]{0,127}$')] [string] $ImageRepository = 'foundry-hosted-integration-poc',
     [ValidatePattern('^[a-zA-Z0-9._-]{1,100}$')] [string] $ImageTag = (Get-Date -Format 'yyyyMMddHHmmss'),
@@ -111,6 +113,28 @@ Write-Host "Model deployment '$ModelDeployment' found (shared with any other wor
 $projectEndpoint = "https://$($parameters.foundryAccountName.value).services.ai.azure.com/api/projects/$($parameters.foundryProjectName.value)"
 $deploymentName = "hosted-agent-infra-$ImageTag"
 
+# Optional operations monitoring (workbook, alerts, action group). Supply notification addresses from a
+# gitignored *.local.bicepparam file or the ALERT_EMAIL environment variable, never from committed files.
+$monitoringTemplate = $null
+if ($MonitoringParameterFile) {
+    $MonitoringParameterFile = (Resolve-Path -LiteralPath $MonitoringParameterFile).Path
+    $monitoringTemplate = Join-Path $repositoryRoot 'infrastructure\monitoring.bicep'
+}
+
+function Invoke-Monitoring([switch] $PreviewOnly) {
+    Write-Step 'Validating and reviewing monitoring changes'
+    $null = Invoke-Az deployment group validate --name "hosted-agent-monitoring-validate" --resource-group $ResourceGroup `
+        --template-file $monitoringTemplate --parameters $MonitoringParameterFile
+    Invoke-Az deployment group what-if --name "hosted-agent-monitoring-whatif" --resource-group $ResourceGroup `
+        --template-file $monitoringTemplate --parameters $MonitoringParameterFile --result-format ResourceIdOnly | Write-Host
+    if ($PreviewOnly) { return }
+    Write-Step 'Deploying monitoring (workbook, alerts, action group)'
+    $state = (Invoke-Az deployment group create --name 'hosted-agent-monitoring' --resource-group $ResourceGroup `
+        --template-file $monitoringTemplate --parameters $MonitoringParameterFile --query properties.provisioningState -o tsv | Out-String).Trim()
+    if ($state -ne 'Succeeded') { throw "Monitoring deployment ended with state '$state'." }
+    Write-Host "Monitoring deployment: $state" -ForegroundColor Green
+}
+
 if (-not $SkipInfrastructure) {
     Write-Step 'Validating infrastructure'
     $null = Invoke-Az bicep build --file $templateFile --stdout
@@ -122,6 +146,7 @@ if (-not $SkipInfrastructure) {
         --template-file $templateFile --parameters $ParameterFile --result-format ResourceIdOnly | Write-Host
 
     if ($WhatIfOnly) {
+        if ($monitoringTemplate) { Invoke-Monitoring -PreviewOnly }
         Write-Host "`nWhat-if completed. No resources were changed." -ForegroundColor Green
         return
     }
@@ -135,6 +160,8 @@ if (-not $SkipInfrastructure) {
 elseif ($WhatIfOnly) {
     throw '-WhatIfOnly cannot be combined with -SkipInfrastructure.'
 }
+
+if ($monitoringTemplate) { Invoke-Monitoring }
 
 $loginServer = (Invoke-Az acr show --name $registryName --resource-group $ResourceGroup --query loginServer -o tsv | Out-String).Trim()
 $imageUri = "$loginServer/${ImageRepository}:$ImageTag"

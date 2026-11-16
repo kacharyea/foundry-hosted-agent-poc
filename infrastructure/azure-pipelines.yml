@@ -55,6 +55,26 @@ stages:
                   --parameters "$(INFRA_PARAMETER_FILE)"
                 if ($LASTEXITCODE -ne 0) { throw 'ARM deployment validation failed.' }
 
+          - task: AzureCLI@2
+            displayName: Validate monitoring (optional)
+            env:
+              ALERT_EMAIL: $(ALERT_EMAIL)
+              MONITORING_PARAMETER_FILE: $(MONITORING_PARAMETER_FILE)
+            inputs:
+              azureSubscription: $(AZURE_SERVICE_CONNECTION)
+              scriptType: pscore
+              scriptLocation: inlineScript
+              inlineScript: |
+                $ErrorActionPreference = 'Stop'
+                if (-not $env:MONITORING_PARAMETER_FILE -or $env:MONITORING_PARAMETER_FILE -like '$(*') { Write-Host 'MONITORING_PARAMETER_FILE not set; skipping.'; return }
+                if ($env:ALERT_EMAIL -like '$(*') { $env:ALERT_EMAIL = '' }
+                az deployment group validate `
+                  --name "hosted-agent-monitoring-validate-$(Build.BuildId)" `
+                  --resource-group "$(AZURE_RESOURCE_GROUP)" `
+                  --template-file infrastructure/monitoring.bicep `
+                  --parameters "$env:MONITORING_PARAMETER_FILE"
+                if ($LASTEXITCODE -ne 0) { throw 'Monitoring validation failed.' }
+
   - stage: WhatIf
     displayName: Review infrastructure changes
     dependsOn: Validate
@@ -82,6 +102,27 @@ stages:
                   --parameters "$(INFRA_PARAMETER_FILE)" `
                   --result-format FullResourcePayloads
                 if ($LASTEXITCODE -ne 0) { throw 'Infrastructure what-if failed.' }
+
+          - task: AzureCLI@2
+            displayName: Run monitoring what-if (optional)
+            env:
+              ALERT_EMAIL: $(ALERT_EMAIL)
+              MONITORING_PARAMETER_FILE: $(MONITORING_PARAMETER_FILE)
+            inputs:
+              azureSubscription: $(AZURE_SERVICE_CONNECTION)
+              scriptType: pscore
+              scriptLocation: inlineScript
+              inlineScript: |
+                $ErrorActionPreference = 'Stop'
+                if (-not $env:MONITORING_PARAMETER_FILE -or $env:MONITORING_PARAMETER_FILE -like '$(*') { Write-Host 'MONITORING_PARAMETER_FILE not set; skipping.'; return }
+                if ($env:ALERT_EMAIL -like '$(*') { $env:ALERT_EMAIL = '' }
+                az deployment group what-if `
+                  --name "hosted-agent-monitoring-whatif-$(Build.BuildId)" `
+                  --resource-group "$(AZURE_RESOURCE_GROUP)" `
+                  --template-file infrastructure/monitoring.bicep `
+                  --parameters "$env:MONITORING_PARAMETER_FILE" `
+                  --result-format ResourceIdOnly
+                if ($LASTEXITCODE -ne 0) { throw 'Monitoring what-if failed.' }
 
   - stage: Approve
     displayName: Approve infrastructure deployment
@@ -139,3 +180,25 @@ stages:
                         --query properties.provisioningState `
                         --output tsv
                       if ($LASTEXITCODE -ne 0) { throw 'Infrastructure deployment failed.' }
+
+                - task: AzureCLI@2
+                  displayName: Deploy monitoring (optional)
+                  env:
+                    ALERT_EMAIL: $(ALERT_EMAIL)
+                    MONITORING_PARAMETER_FILE: $(MONITORING_PARAMETER_FILE)
+                  inputs:
+                    azureSubscription: $(AZURE_SERVICE_CONNECTION)
+                    scriptType: pscore
+                    scriptLocation: inlineScript
+                    inlineScript: |
+                      $ErrorActionPreference = 'Stop'
+                      if (-not $env:MONITORING_PARAMETER_FILE -or $env:MONITORING_PARAMETER_FILE -like '$(*') { Write-Host 'MONITORING_PARAMETER_FILE not set; skipping.'; return }
+                      if ($env:ALERT_EMAIL -like '$(*') { $env:ALERT_EMAIL = '' }
+                      az deployment group create `
+                        --name "hosted-agent-monitoring" `
+                        --resource-group "$(AZURE_RESOURCE_GROUP)" `
+                        --template-file infrastructure/monitoring.bicep `
+                        --parameters "$env:MONITORING_PARAMETER_FILE" `
+                        --query properties.provisioningState `
+                        --output tsv
+                      if ($LASTEXITCODE -ne 0) { throw 'Monitoring deployment failed.' }

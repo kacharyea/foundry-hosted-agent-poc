@@ -5,6 +5,7 @@ param(
     [Parameter(Mandatory)] [ValidatePattern('^[a-zA-Z0-9.-]+/[a-zA-Z0-9._/-]+:[a-zA-Z0-9._-]+$')] [string] $ImageUri,
     [Parameter(Mandatory)] [ValidateNotNullOrEmpty()] [string] $ModelDeployment,
     [Parameter(Mandatory)] [ValidatePattern('^[a-zA-Z0-9._-]{1,100}$')] [string] $Release,
+    [ValidatePattern('^https://')] [string] $JsonPlaceholderBaseUrl = 'https://jsonplaceholder.typicode.com/',
     [int] $TimeoutMinutes = 12
 )
 
@@ -25,7 +26,7 @@ $definition = @{
     protocol_versions = @(@{ protocol = 'responses'; version = '2.0.0' })
     environment_variables = @{
         AZURE_AI_MODEL_DEPLOYMENT_NAME = $ModelDeployment
-        JSONPLACEHOLDER_BASE_URL = 'https://jsonplaceholder.typicode.com/'
+        JSONPLACEHOLDER_BASE_URL = $JsonPlaceholderBaseUrl
         MICROSOFT_LEARN_MCP_ENDPOINT = 'https://learn.microsoft.com/api/mcp'
         # Safe only for this synthetic/public-data POC. Disable for sensitive workloads.
         OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT = 'true'

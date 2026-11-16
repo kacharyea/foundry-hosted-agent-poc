@@ -13,3 +13,6 @@ TestResults/
 *.pem
 *.key
 *-share.zip
+
+# Incident evidence packs
+evidence/

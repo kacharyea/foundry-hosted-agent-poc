@@ -399,6 +399,33 @@ Variable group: `foundry-hosted-agent-poc`
 Credentials belong in the federated service connection—not YAML or variable groups. Add Azure
 DevOps environment approvals/checks for production and infrastructure in addition to YAML gates.
 
+## Operations monitoring: dashboard, alerts, runbooks
+
+`infrastructure/monitoring.bicep` is a separate, optional deployment that adds an operations workbook, five
+alert rules (plus an opt-in no-traffic rule), an action group, and optional maintenance suppression. It only
+references your existing Log Analytics workspace and Application Insights component.
+
+| Alert | Class | Severity |
+|---|---|---|
+| `hosted-agent-failed-invocations` | Page | 1 |
+| `hosted-agent-sustained-latency` | Page | 2 |
+| `hosted-agent-tool-errors`, `-dependency-failures`, `-token-spike` | Create work | 3 |
+
+Each alert carries a payload with service, environment, severity class, owner, backup owner, runbook URL, and
+dashboard link. Notification addresses are never committed: set the `ALERT_EMAIL` environment variable or use a
+gitignored `*.local.bicepparam`. Start from `infrastructure/environments/monitoring.example.bicepparam`.
+
+```powershell
+$env:ALERT_EMAIL = 'oncall@example.com'
+.\deploy\Deploy-Solution.ps1 -ParameterFile .\infrastructure\environments\dev.bicepparam `
+  -MonitoringParameterFile .\infrastructure\environments\monitoring.example.bicepparam `
+  -ResourceGroup rg-agent-dev -ModelDeployment gpt-5-mini -WhatIfOnly
+```
+
+In the pipeline, set `MONITORING_PARAMETER_FILE` (and a secret `ALERT_EMAIL`) to enable the monitoring steps.
+Operational scripts live in `hosted-agent/scripts`: `Rollback-HostedAgent.ps1`, `Collect-EvidencePack.ps1`, and
+`Start-DemoFault.ps1` (non-production only). Runbooks are in `docs/runbooks`.
+
 ## Sharing a resource group with other workloads
 
 The templates deploy **incrementally** and only **reference** the Foundry account, project, and model
@@ -432,6 +459,8 @@ Get details for user 99 and report the controlled error code.
 - `docs/deployment.md`
 - `docs/pipeline.md`
 - `docs/observability-demo.md`
+- `docs/runbooks/README.md` - alert runbooks (replace the draft ownership with yours)
+- `docs/ops-demo.md` - dashboard, alert, runbook, rollback walkthrough
 
 This POC uses public synthetic data and is not production-ready without an organizational security,
 privacy, networking, reliability, and cost review.
