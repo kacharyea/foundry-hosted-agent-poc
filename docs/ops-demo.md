@@ -5,6 +5,13 @@ ahead because telemetry ingestion and alert evaluation take 5 to 10 minutes.
 
 ## Preparation (non-production environment only)
 
+Run `hosted-agent/scripts/Prepare-Demo.ps1` first. It checks login, the routed version and its health, telemetry,
+alert rules, the action group and the workbook, and sends a few warm-up requests. It changes nothing else.
+
+```powershell
+.\hosted-agent\scripts\Prepare-Demo.ps1 -ProjectEndpoint <endpoint> -AgentName <agent> -ResourceGroup <rg> -WorkspaceName <workspace>
+```
+
 1. Deploy monitoring (see the root README). For a live demo, set `alertEvaluationFrequency = 'PT1M'` and
    `alertWindowSize = 'PT5M'` in your local parameter file.
 2. Open the **Hosted Agent - operations** workbook and confirm tiles show healthy traffic. Send a few normal
