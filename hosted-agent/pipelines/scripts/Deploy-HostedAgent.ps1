@@ -16,7 +16,7 @@ if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($token)) {
     throw 'Unable to acquire a Foundry token from the Azure service connection.'
 }
 $headers = @{ Authorization = "Bearer $token" }
-$agentUri = "$project/agents/$AgentName?api-version=v1"
+$agentUri = "$project/agents/${AgentName}?api-version=v1"
 
 $definition = @{
     kind = 'hosted'
@@ -57,7 +57,7 @@ Write-Host "Created $AgentName version $version from $ImageUri"
 $deadline = [DateTimeOffset]::UtcNow.AddMinutes($TimeoutMinutes)
 do {
     Start-Sleep -Seconds 10
-    $details = Invoke-RestMethod -Uri "$project/agents/$AgentName/versions/$version?api-version=v1" -Headers $headers
+    $details = Invoke-RestMethod -Uri "$project/agents/$AgentName/versions/${version}?api-version=v1" -Headers $headers
     Write-Host "Provisioning status: $($details.status)"
     if ($details.status -eq 'failed') { throw "Hosted Agent provisioning failed: $($details.error.code) - $($details.error.message)" }
 } while ($details.status -ne 'active' -and [DateTimeOffset]::UtcNow -lt $deadline)
