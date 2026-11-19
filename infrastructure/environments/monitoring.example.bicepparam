@@ -6,6 +6,8 @@ param logAnalyticsWorkspaceName = 'law-hosted-agent-dev'
 param applicationInsightsName = 'appi-hosted-agent-dev'
 param agentName = 'foundry-hosted-integration-poc'
 param environmentName = 'dev'
+// Optional: monitor a prompt agent too (workbook plus three alert rules). Prompt agents emit different telemetry.
+// param promptAgentName = 'foundry-prompt-agent-poc'
 
 // Use team or role names in committed files.
 param ownerName = 'unassigned'

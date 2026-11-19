@@ -14,6 +14,9 @@ responder always knows where to look: **1 Trigger and impact, 2 Confirm, 3 Diagn
 | `hosted-agent-dependency-failures` | Create work | 3 | [dependency-failures](dependency-failures.md) |
 | `hosted-agent-token-spike` | Create work | 3 | [token-spike](token-spike.md) |
 | `hosted-agent-no-traffic` (opt-in) | Create work | 3 | [no-traffic](no-traffic.md) |
+| `prompt-agent-failed-invocations` | Page | 1 | [prompt-agent-failed-invocations](prompt-agent-failed-invocations.md) |
+| `prompt-agent-tool-failures` | Create work | 3 | [prompt-agent-tool-failures](prompt-agent-tool-failures.md) |
+| `prompt-agent-token-spike` | Create work | 3 | [prompt-agent-token-spike](prompt-agent-token-spike.md) |
 
 Page only for customer-impacting symptoms. Trends and cost become work items, not pages.
 

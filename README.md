@@ -423,6 +423,8 @@ $env:ALERT_EMAIL = 'oncall@example.com'
 ```
 
 In the pipeline, set `MONITORING_PARAMETER_FILE` (and a secret `ALERT_EMAIL`) to enable the monitoring steps.
+
+**Prompt agents:** set `promptAgentName` to also deploy a Prompt Agent workbook and three alert rules. A prompt agent has no container, so its spans (`invoke_agent`, `chat`, `execute_tool`) arrive in `AppDependencies` under the role `responsesapi`, not in `AppRequests`.
 Operational scripts live in `hosted-agent/scripts`: `Rollback-HostedAgent.ps1`, `Collect-EvidencePack.ps1`, and
 `Start-DemoFault.ps1` (non-production only). Runbooks are in `docs/runbooks`.
 

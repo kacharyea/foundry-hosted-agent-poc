@@ -21,6 +21,9 @@ param ownerName string = 'unassigned'
 @description('Backup owner shown on alerts.')
 param backupOwnerName string = 'unassigned'
 
+@description('Optional prompt agent name. When set, a Prompt Agent workbook and three alert rules are created. Prompt agents have no container, so they use different telemetry than the Hosted Agent.')
+param promptAgentName string = ''
+
 @description('Notification email addresses. Leave empty to create alerts without an action group. Supply real addresses from a gitignored *.local.bicepparam file or the ALERT_EMAIL environment variable; never commit them.')
 param alertEmailAddresses array = []
 
@@ -144,6 +147,29 @@ module alerts 'modules/ops-alerts.bicep' = if (enableAlerts) {
   ]
 }
 
+module promptAgent 'modules/prompt-agent-ops.bicep' = if (!empty(promptAgentName)) {
+  name: 'prompt-agent-ops'
+  params: {
+    location: location
+    workspaceId: workspace.id
+    applicationInsightsId: appInsights.id
+    actionGroupIds: empty(alertEmailAddresses) ? [] : [resourceId('Microsoft.Insights/actionGroups', actionGroupName)]
+    agentName: promptAgentName
+    environmentName: environmentName
+    ownerName: ownerName
+    backupOwnerName: backupOwnerName
+    runbookBaseUrl: runbookBaseUrl
+    evaluationFrequency: alertEvaluationFrequency
+    windowSize: alertWindowSize
+    toolFailureThreshold: toolErrorThreshold
+    tokenSpikeThreshold: tokenSpikeThreshold
+    tags: tags
+  }
+  dependsOn: [
+    actionGroup
+  ]
+}
+
 // Scheduled maintenance suppression: removes action groups (notifications) but keeps the alert records.
 resource maintenanceSuppression 'Microsoft.AlertsManagement/actionRules@2021-08-08' = if (!empty(maintenanceWindowStart) && !empty(maintenanceWindowEnd)) {
   name: 'suppress-hosted-agent-maintenance'
@@ -179,4 +205,5 @@ resource maintenanceSuppression 'Microsoft.AlertsManagement/actionRules@2021-08-
 
 output workbookId string = workbook.outputs.workbookId
 output actionGroupId string = empty(alertEmailAddresses) ? '' : resourceId('Microsoft.Insights/actionGroups', actionGroupName)
+output promptAgentWorkbookId string = promptAgent.?outputs.workbookId ?? ''
 output alertRuleNames array = alerts.?outputs.alertRuleNames ?? []
