@@ -20,3 +20,6 @@ evidence/
 # Evaluation run output
 evaluation-results/
 __pycache__/
+
+# Local test clone of this repository
+foundry-hosted-agent-poc/
