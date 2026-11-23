@@ -428,6 +428,17 @@ In the pipeline, set `MONITORING_PARAMETER_FILE` (and a secret `ALERT_EMAIL`) to
 Operational scripts live in `hosted-agent/scripts`: `Rollback-HostedAgent.ps1`, `Collect-EvidencePack.ps1`, and
 `Start-DemoFault.ps1` (non-production only). Runbooks are in `docs/runbooks`.
 
+## Evaluating agent quality
+
+The `evaluation/` folder holds a versioned, labeled dataset in four tiers (smoke, regression, challenge, holdout), deterministic release gates (tool selection, required and forbidden text), and a Foundry batch evaluation script with LLM-judge evaluators pinned to an agent version. Session 2 incidents seed the regression tier. See `evaluation/README.md` for criteria, run order, and capacity guidance.
+
+```powershell
+.\evaluation\scripts\Invoke-DeterministicEval.ps1 -ProjectEndpoint <endpoint> -AgentName foundry-hosted-integration-poc `
+  -DatasetPath .\evaluation\datasets\v2\smoke.jsonl
+```
+
+Evaluation requests are normal agent traffic, so they appear in the operations workbook and can trigger alerts. Run them in a non-production environment or tell the on-call team first.
+
 ## Sharing a resource group with other workloads
 
 The templates deploy **incrementally** and only **reference** the Foundry account, project, and model
@@ -463,6 +474,7 @@ Get details for user 99 and report the controlled error code.
 - `docs/observability-demo.md`
 - `docs/runbooks/README.md` - alert runbooks (replace the draft ownership with yours)
 - `docs/ops-demo.md` - dashboard, alert, runbook, rollback walkthrough
+- `evaluation/README.md` - evaluation criteria, dataset tiers, evaluators, and run order
 
 This POC uses public synthetic data and is not production-ready without an organizational security,
 privacy, networking, reliability, and cost review.
