@@ -50,6 +50,11 @@ def main() -> int:
     parser.add_argument("--timeout-minutes", type=int, default=30)
     parser.add_argument("--dry-run", action="store_true", help="Validate the dataset and print the plan without calling Azure.")
     parser.add_argument("--inline", action="store_true", help="Send rows inline instead of uploading a dataset file. Use if the project has no storage for uploads (untested).")
+    parser.add_argument(
+        "--response-from", choices=("text", "items"), default="text",
+        help="What the judges see as the response. 'text' is the final answer only (default). 'items' is the full output including tool calls, "
+             "but reasoning items in the output make the agent evaluators error for reasoning models such as gpt-5-mini.",
+    )
     args = parser.parse_args()
 
     rows = load_rows(args.dataset_version, args.tier)
@@ -90,14 +95,15 @@ def main() -> int:
         source = {"type": "file_id", "id": dataset.id}
         print(f"Uploaded dataset {dataset_name} {dataset_version}")
 
-    mapping_items = {"query": "{{item.query}}", "response": "{{sample.output_items}}"}
+    response_ref = "{{sample.output_items}}" if args.response_from == "items" else "{{sample.output_text}}"
+    mapping_items = {"query": "{{item.query}}", "response": response_ref}
     criteria = [
         TestingCriterionAzureAIEvaluator(
             type="azure_ai_evaluator",
             name=name.replace("_", " ").title(),
             evaluator_name=f"builtin.{name}",
             initialization_parameters={"model": judge_model},
-            data_mapping=mapping_items if name != "relevance" else {"query": "{{item.query}}", "response": "{{sample.output_text}}"},
+            data_mapping=mapping_items,
         )
         for name in evaluators
     ]
@@ -154,10 +160,15 @@ def main() -> int:
     for item in client.evals.runs.output_items.list(run_id=run.id, eval_id=evaluation.id):
         entry = {"id": item.id, "status": getattr(item, "status", None), "results": []}
         for result in item.results or []:
-            entry["results"].append({"name": result.name, "passed": result.passed, "score": result.score,
-                                     "reason": getattr(result, "reason", None)})
+            state = "ERROR" if getattr(result, "status", None) == "error" or result.passed is None else ("pass" if result.passed else "FAIL")
+            err = ((getattr(result, "sample", None) or {}).get("error") or {}).get("message") if isinstance(getattr(result, "sample", None), dict) else None
+            entry["results"].append({"name": result.name, "state": state, "passed": result.passed, "score": result.score,
+                                     "reason": getattr(result, "reason", None), "error": err})
         items.append(entry)
-        print(f"  {item.id}: " + ", ".join(f"{r['name']}={'pass' if r['passed'] else 'FAIL'}({r['score']})" for r in entry["results"]))
+        print(f"  {item.id}: " + ", ".join(f"{r['name']}={r['state']}({r['score']})" for r in entry["results"]))
+        for r in entry["results"]:
+            if r["error"]:
+                print(f"      {r['name']} error: {r['error'][:200]}")
 
     out_dir = Path(args.output_dir) / f"{stamp}-{args.tier}"
     out_dir.mkdir(parents=True, exist_ok=True)

@@ -82,6 +82,9 @@ A batch evaluation calls the model for the agent and again for each judge, so it
 
 - The deterministic script follows the **routed** version. To compare versions, route traffic to each version in turn, or use the Foundry script, which can pin a version.
 - Target-based evaluation works with agents on the responses or invocations protocol in synchronous, non-streaming mode.
-- `evaluate_agent.py` was syntax-checked and dry-run only. It has not been run against a live project.
+- `evaluate_agent.py` ran against a live project: the dataset upload, evaluation, and run worked. It has not yet produced judge scores (see the next two points).
+- **Reasoning items break the agent evaluators.** If the judges are given the full output (`--response-from items`), a reasoning model such as `gpt-5-mini` returns `reasoning` items and every row errors with "Invalid content type 'TextReasoningContent'". The default is now `--response-from text` (final answer only). The judges then do not see tool calls, which the deterministic script checks instead.
+- **The person running the evaluation needs permission to call the judge model.** The judge runs as the signed-in user. Without the data action `Microsoft.CognitiveServices/accounts/OpenAI/deployments/chat/completions/action` on the Foundry account, every row errors with `401 PermissionDenied`. Control-plane roles such as Owner or Contributor do not grant it. A role such as Cognitive Services OpenAI User at the account scope does. Role changes can take several minutes to apply.
+- Rows the judge could not score are reported as `ERROR`, never as pass or fail.
 - Uploading a dataset file needs storage on the Foundry project. If the upload fails, add `--inline` to send the rows directly (this path is untested).
 - Rubric evaluators, risk and safety evaluators, and some other features have regional limits. Check the Microsoft Learn evaluation pages for your region.
