@@ -1,4 +1,4 @@
-# Hosted Agent evaluation (Session 3)
+# Hosted Agent evaluation
 
 Evaluates the Hosted Agent against labeled datasets. Criteria, dataset tiers, evaluator selection, and a failure-cluster template follow the Session 3 workflow: **Define, Build, Select, Run and improve**.
 
