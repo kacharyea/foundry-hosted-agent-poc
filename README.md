@@ -434,7 +434,7 @@ The `evaluation/` folder holds a versioned, labeled dataset in four tiers (smoke
 
 ```powershell
 .\evaluation\scripts\Invoke-DeterministicEval.ps1 -ProjectEndpoint <endpoint> -AgentName foundry-hosted-integration-poc `
-  -DatasetPath .\evaluation\datasets\v1\smoke.jsonl
+  -DatasetPath .\evaluation\datasets\v2\smoke.jsonl
 ```
 
 Evaluation requests are normal agent traffic, so they appear in the operations workbook and can trigger alerts. Run them in a non-production environment or tell the on-call team first.

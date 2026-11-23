@@ -8,7 +8,7 @@ All data is synthetic. Nothing here runs unless you start it.
 
 | Path | Purpose |
 |---|---|
-| `datasets/v1/*.jsonl` | Four tiers: smoke (5), regression (8), challenge (7), holdout (5) |
+| `datasets/v2/*.jsonl` | Current dataset: smoke (5), regression (8), challenge (7), holdout (5). `v1` is kept unchanged; see `datasets/CHANGELOG.md` |
 | `scripts/Invoke-DeterministicEval.ps1` | Hard gates: tool selection, required text, forbidden text. No LLM judge. |
 | `src/evaluate_agent.py` | Foundry batch evaluation with LLM-judge evaluators, pinned to an agent version |
 | `requirements.txt` | `azure-ai-projects>=2.8.0`, `azure-identity` |
@@ -54,7 +54,7 @@ Versioning rule: never overwrite a submitted dataset. Add `v2/` for changes. Eac
 az login
 # Deterministic gates (targets the version currently routed)
 .\evaluation\scripts\Invoke-DeterministicEval.ps1 -ProjectEndpoint <endpoint> -AgentName foundry-hosted-integration-poc `
-  -DatasetPath .\evaluation\datasets\v1\smoke.jsonl
+  -DatasetPath .\evaluation\datasets\v2\smoke.jsonl
 
 # Judge evaluators (pins an agent version; needs a judge model deployment)
 pip install -r evaluation/requirements.txt
@@ -77,6 +77,24 @@ python evaluation/src/evaluate_agent.py --agent-version 10 --tier smoke
 ## Capacity and rate limits
 
 A batch evaluation calls the model for the agent and again for each judge, so it uses far more tokens than a chat. The agent and the judge share a deployment unless you set a different judge model. If you see `rate_limit_exceeded`, raise the deployment capacity, run fewer rows, or use a separate judge deployment. The deterministic script retries with backoff and reports rows it could not score as `UNSCORED`, never as passes.
+
+## Worked example: healthy v10 versus faulty v11
+
+v11 uses the same image as v10; only the REST base URL points to an address that does not exist. Same smoke tier, both versions:
+
+| Check | v10 (healthy) | v11 (REST broken) |
+|---|---|---|
+| Tool selection accuracy (hard gate) | 100% | **100%** |
+| Deterministic pass rate, dataset v1 (13 rows) | 100% | 69.2% |
+| Deterministic pass rate, dataset v2 (same answers) | 100% | **46.2%** |
+| Judge: Intent Resolution (smoke, scored rows) | all pass (4 to 5 of 5) | all pass (4 to 5 of 5) |
+| Judge: Task Adherence (smoke) | 2 of 5 pass | 2 of 5 pass |
+
+What this teaches:
+1. **A hard gate on tool selection alone missed the regression.** The agent still called the right tools on v11; the tools just failed. Content checks caught it.
+2. **The judge did not separate the two versions.** v11 answered honestly that its tools failed, so Intent Resolution still passed. Task Adherence failed the same rows on both versions because the judge could not see the tool calls.
+3. **An improvement loop in action.** The v1 dataset missed three failures. v2 adds a forbidden-text check, and `datasets/CHANGELOG.md` records why and the before and after pass rates.
+4. **Layering works.** Deterministic gates block the release; judge scores and human review explain and prioritize.
 
 ## Notes and limits
 

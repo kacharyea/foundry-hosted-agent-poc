@@ -43,7 +43,7 @@ def main() -> int:
     parser.add_argument("--agent-name", default="foundry-hosted-integration-poc")
     parser.add_argument("--agent-version", help="Pin an agent version. Omit to evaluate the latest version.")
     parser.add_argument("--tier", choices=TIERS, default="smoke")
-    parser.add_argument("--dataset-version", default="v1")
+    parser.add_argument("--dataset-version", default="v2")
     parser.add_argument("--include-relevance", action="store_true", help="Also score Relevance (response text mapping is untested).")
     parser.add_argument("--output-dir", default="evaluation-results")
     parser.add_argument("--poll-seconds", type=int, default=10)
