@@ -16,3 +16,7 @@ TestResults/
 
 # Incident evidence packs
 evidence/
+
+# Evaluation run output
+evaluation-results/
+__pycache__/
