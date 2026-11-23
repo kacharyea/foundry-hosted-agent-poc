@@ -83,4 +83,5 @@ A batch evaluation calls the model for the agent and again for each judge, so it
 - The deterministic script follows the **routed** version. To compare versions, route traffic to each version in turn, or use the Foundry script, which can pin a version.
 - Target-based evaluation works with agents on the responses or invocations protocol in synchronous, non-streaming mode.
 - `evaluate_agent.py` was syntax-checked and dry-run only. It has not been run against a live project.
+- Uploading a dataset file needs storage on the Foundry project. If the upload fails, add `--inline` to send the rows directly (this path is untested).
 - Rubric evaluators, risk and safety evaluators, and some other features have regional limits. Check the Microsoft Learn evaluation pages for your region.

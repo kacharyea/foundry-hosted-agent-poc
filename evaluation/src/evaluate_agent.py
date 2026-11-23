@@ -49,6 +49,7 @@ def main() -> int:
     parser.add_argument("--poll-seconds", type=int, default=10)
     parser.add_argument("--timeout-minutes", type=int, default=30)
     parser.add_argument("--dry-run", action="store_true", help="Validate the dataset and print the plan without calling Azure.")
+    parser.add_argument("--inline", action="store_true", help="Send rows inline instead of uploading a dataset file. Use if the project has no storage for uploads (untested).")
     args = parser.parse_args()
 
     rows = load_rows(args.dataset_version, args.tier)
@@ -77,14 +78,17 @@ def main() -> int:
     agent = project_client.agents.get(args.agent_name)
     print(f"Found agent: {agent.name}")
 
-    with tempfile.TemporaryDirectory() as tmp:
-        upload = Path(tmp) / f"{args.tier}.jsonl"
-        upload.write_text(
-            "\n".join(json.dumps({"id": r["id"], "query": r["query"], "ground_truth": r.get("ground_truth", "")}) for r in rows),
-            encoding="utf-8",
-        )
-        dataset = project_client.datasets.upload_file(name=dataset_name, version=dataset_version, file_path=str(upload))
-    print(f"Uploaded dataset {dataset_name} {dataset_version}")
+    slim_rows = [{"id": r["id"], "query": r["query"], "ground_truth": r.get("ground_truth", "")} for r in rows]
+    if args.inline:
+        source = {"type": "file_content", "content": [{"item": row} for row in slim_rows]}
+        print("Sending rows inline (no dataset upload).")
+    else:
+        with tempfile.TemporaryDirectory() as tmp:
+            upload = Path(tmp) / f"{args.tier}.jsonl"
+            upload.write_text("\n".join(json.dumps(row) for row in slim_rows), encoding="utf-8")
+            dataset = project_client.datasets.upload_file(name=dataset_name, version=dataset_version, file_path=str(upload))
+        source = {"type": "file_id", "id": dataset.id}
+        print(f"Uploaded dataset {dataset_name} {dataset_version}")
 
     mapping_items = {"query": "{{item.query}}", "response": "{{sample.output_items}}"}
     criteria = [
@@ -121,7 +125,7 @@ def main() -> int:
         name=f"{args.tier} run {stamp}",
         data_source={
             "type": "azure_ai_target_completions",
-            "source": {"type": "file_id", "id": dataset.id},
+            "source": source,
             "input_messages": {
                 "type": "template",
                 "template": [{"type": "message", "role": "user", "content": {"type": "input_text", "text": "{{item.query}}"}}],
@@ -159,7 +163,7 @@ def main() -> int:
     out_dir.mkdir(parents=True, exist_ok=True)
     (out_dir / "foundry-results.json").write_text(
         json.dumps({"evaluation_id": evaluation.id, "run_id": run.id, "report_url": run.report_url, "agent": args.agent_name,
-                    "agent_version": args.agent_version or "latest", "tier": args.tier, "dataset": f"{dataset_name}:{dataset_version}",
+                    "agent_version": args.agent_version or "latest", "tier": args.tier, "dataset": ("inline" if args.inline else f"{dataset_name}:{dataset_version}"),
                     "result_counts": str(run.result_counts), "items": items}, indent=2),
         encoding="utf-8",
     )
